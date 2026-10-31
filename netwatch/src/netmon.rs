@@ -10,6 +10,11 @@ mod actor;
 mod android;
 #[cfg(bsd)]
 mod bsd;
+// Temporary iOS stub: real interface snapshots, no automatic change events.
+// The app must notify iroh on foreground/manual sync until #261 is resolved.
+#[cfg(target_os = "ios")]
+#[path = "netmon/posix_minimal.rs"]
+mod ios;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(posix_minimal)]

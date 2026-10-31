@@ -25,6 +25,8 @@ mod netdev_impl;
 
 #[cfg(bsd)]
 pub(super) mod bsd;
+#[cfg(target_os = "ios")]
+mod ios;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod linux;
 #[cfg(posix_minimal)]
@@ -36,6 +38,8 @@ mod windows;
 
 #[cfg(bsd)]
 use self::bsd as platform;
+#[cfg(target_os = "ios")]
+use self::ios as platform;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use self::linux as platform;
 #[cfg(posix_minimal)]
