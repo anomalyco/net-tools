@@ -1,6 +1,8 @@
 //! Networking related utilities
 
 pub mod interfaces;
+#[cfg(target_os = "ios")]
+mod ios;
 pub mod ip;
 mod ip_family;
 pub mod netmon;

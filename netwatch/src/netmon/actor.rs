@@ -9,6 +9,8 @@ use tracing::{debug, trace};
 use super::android as os;
 #[cfg(bsd)]
 use super::bsd as os;
+#[cfg(target_os = "ios")]
+use super::ios as os;
 #[cfg(target_os = "linux")]
 use super::linux as os;
 #[cfg(posix_minimal)]
@@ -43,7 +45,6 @@ pub(super) struct Actor {
     /// Latest observed wall time.
     wall_time: Instant,
     /// OS specific monitor.
-    #[allow(dead_code)]
     route_monitor: RouteMonitor,
     mon_receiver: mpsc::Receiver<NetworkMessage>,
     actor_receiver: mpsc::Receiver<ActorMessage>,
@@ -56,11 +57,11 @@ pub(super) enum ActorMessage {
 
 impl Actor {
     pub(super) async fn new() -> Result<Self, os::Error> {
-        let interface_state = State::new().await;
         let wall_time = Instant::now();
 
         let (mon_sender, mon_receiver) = mpsc::channel(MON_CHAN_CAPACITY);
-        let route_monitor = RouteMonitor::new(mon_sender)?;
+        let mut route_monitor = RouteMonitor::new(mon_sender)?;
+        let interface_state = route_monitor.state().await;
         let (actor_sender, actor_receiver) = mpsc::channel(ACTOR_CHAN_CAPACITY);
 
         Ok(Actor {
@@ -137,7 +138,7 @@ impl Actor {
     async fn handle_potential_change(&mut self, time_jumped: bool) {
         trace!("potential change");
 
-        let mut new_state = State::new().await;
+        let mut new_state = self.route_monitor.state().await;
         let old_state = &self.interface_state.get();
 
         if time_jumped {
@@ -163,5 +164,14 @@ impl Actor {
 
         self.wall_time = now;
         jumped
+    }
+}
+
+// Other backends only report that something changed. iOS also delivers its
+// default route with each notification, so it implements state() itself.
+#[cfg(not(target_os = "ios"))]
+impl RouteMonitor {
+    async fn state(&mut self) -> State {
+        State::new().await
     }
 }

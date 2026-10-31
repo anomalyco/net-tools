@@ -41,15 +41,18 @@ libc = "0.2.139"
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = ["rt", "net"] }
 
-# netdev is available on all non-embedded, non-wasm platforms
+# Native (non-embedded) runtimes
 [target.'cfg(not(any(target_os = "espidf", all(target_family = "wasm", target_os = "unknown"))))'.dependencies]
-netdev = "0.46.3"
 tokio = { version = "1", features = [
     "fs",
     "io-std",
 ] }
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# The iOS backend uses getifaddrs, not netdev's Darwin routing table reader.
+[target.'cfg(not(any(target_os = "ios", target_os = "espidf", all(target_family = "wasm", target_os = "unknown"))))'.dependencies]
+netdev = "0.46.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
 # msrv fix
 objc2-core-foundation = "0.3.2"
 objc2-system-configuration = "0.3.2"
@@ -102,6 +105,7 @@ wasm-bindgen-test = "0.3"
 wasm-tracing = "2.1.0"
 
 [build-dependencies]
+cc = "1.5.1"
 cfg_aliases = { version = "0.2.2" }
 
 [package.metadata.docs.rs]
