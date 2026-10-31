@@ -9,7 +9,7 @@ use std::{
 };
 
 use libc::{AF_INET, AF_INET6, AF_LINK, AF_ROUTE, AF_UNSPEC, CTL_NET, c_int, uintptr_t};
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(target_os = "macos")]
 use libc::{
     NET_RT_DUMP, RTA_IFP, RTAX_BRD, RTAX_DST, RTAX_GATEWAY, RTAX_MAX, RTAX_NETMASK, RTF_GATEWAY,
 };
@@ -32,9 +32,9 @@ mod openbsd;
 #[cfg(target_os = "openbsd")]
 pub(crate) use self::openbsd::*;
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(target_os = "macos")]
 mod macos;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(target_os = "macos")]
 use self::macos::*;
 
 pub async fn default_route() -> Option<DefaultRouteDetails> {
@@ -117,7 +117,7 @@ fn is_default_gateway(rm: &RouteMessage) -> bool {
         return false;
     }
 
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(target_os = "macos")]
     if rm.flags & libc::RTF_IFSCOPE as u32 != 0 {
         return false;
     }
@@ -181,7 +181,7 @@ fn parse_routing_table(rib: &[u8]) -> Option<Vec<RouteMessage>> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios",))]
+#[cfg(target_os = "macos")]
 fn fetch_routing_table() -> Option<Vec<u8>> {
     const NET_RT_DUMP2: i32 = 7;
     match fetch_rib(libc::AF_UNSPEC, NET_RT_DUMP2, 0) {
@@ -193,7 +193,7 @@ fn fetch_routing_table() -> Option<Vec<u8>> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios",))]
+#[cfg(target_os = "macos")]
 fn parse_routing_table(rib: &[u8]) -> Option<Vec<RouteMessage>> {
     match parse_rib(libc::NET_RT_IFLIST2, rib) {
         Ok(res) => {
@@ -213,7 +213,7 @@ fn parse_routing_table(rib: &[u8]) -> Option<Vec<RouteMessage>> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(target_os = "macos")]
 const fn is_valid_rib_type(typ: RIBType) -> bool {
     const NET_RT_STAT: RIBType = 4;
     const NET_RT_TRASH: RIBType = 5;
@@ -279,12 +279,7 @@ fn u32_from_ne_range(
 impl WireFormat {
     fn parse(&self, _typ: RIBType, data: &[u8]) -> Result<Option<WireMessage>, RouteError> {
         match self.typ {
-            #[cfg(any(
-                target_os = "freebsd",
-                target_os = "netbsd",
-                target_os = "macos",
-                target_os = "ios"
-            ))]
+            #[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "macos"))]
             MessageType::Route => {
                 ensure!(data.len() >= self.body_off, RouteError::MessageTooShort);
                 let l = u16_from_ne_range(data, ..2)?;
@@ -888,14 +883,14 @@ fn parse_kernel_inet_addr(af: i32, b: &[u8]) -> Result<(i32, Addr), RouteError> 
     //   the routing message boundary
     let mut l = b[0] as usize;
 
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(target_os = "macos")]
     {
         // On Darwin, an address in the kernel form is also used as a message filler.
         if l == 0 || b.len() > roundup(l) {
             l = roundup(l)
         }
     }
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    #[cfg(not(target_os = "macos"))]
     {
         l = roundup(l);
     }
@@ -1042,7 +1037,7 @@ mod tests {
         buf[2] = wrong_version;
         buf[3] = 0; // arbitrary type
 
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        #[cfg(target_os = "macos")]
         let rib_type = libc::NET_RT_IFLIST2;
         #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
         let rib_type = libc::NET_RT_IFLIST;
@@ -1077,7 +1072,7 @@ mod tests {
     #[test]
     #[cfg(target_endian = "little")]
     fn test_parse_addrs() {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        #[cfg(target_os = "macos")]
         use libc::{RTA_BRD, RTA_DST, RTA_GATEWAY, RTA_IFA, RTA_IFP, RTA_NETMASK};
 
         let parse_addrs_little_endian_tests = [

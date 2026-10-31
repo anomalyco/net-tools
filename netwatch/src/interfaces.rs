@@ -22,9 +22,13 @@ use crate::ip::{LocalAddresses, is_link_local};
 // The `netdev`-capable modules share enumeration via `netdev_impl`.
 #[cfg(netdev)]
 mod netdev_impl;
+#[cfg(any(netdev, target_os = "ios"))]
+mod snapshot;
 
 #[cfg(bsd)]
 pub(super) mod bsd;
+#[cfg(target_os = "ios")]
+pub(crate) mod ios;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod linux;
 #[cfg(posix_minimal)]
@@ -36,6 +40,8 @@ mod windows;
 
 #[cfg(bsd)]
 use self::bsd as platform;
+#[cfg(target_os = "ios")]
+use self::ios as platform;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use self::linux as platform;
 #[cfg(posix_minimal)]
@@ -50,6 +56,8 @@ use self::windows as platform;
 /// Matches the POSIX `IFF_UP` value. On platforms that do not expose BSD-style
 /// interface flags it is derived from the platform's notion of "up".
 const IFF_UP: u32 = 0x1;
+#[cfg(any(netdev, target_os = "ios"))]
+const IFF_LOOPBACK: u32 = 0x8;
 
 /// State flags for a single IPv6 address.
 ///
@@ -60,7 +68,7 @@ const IFF_UP: u32 = 0x1;
 /// Flags are collected from platform-specific sources:
 ///
 /// - **Linux/Android**: netlink `IFA_FLAGS` attribute (`IFA_F_*` from [`<linux/if_addr.h>`])
-/// - **macOS/iOS/FreeBSD/OpenBSD/NetBSD**: `SIOCGIFAFLAG_IN6` ioctl (`IN6_IFF_*`)
+/// - **macOS/FreeBSD/OpenBSD/NetBSD**: `SIOCGIFAFLAG_IN6` ioctl (`IN6_IFF_*`)
 /// - **Windows**: `NL_DAD_STATE` and `NL_SUFFIX_ORIGIN` from `IP_ADAPTER_UNICAST_ADDRESS`
 ///
 /// [`<linux/if_addr.h>`]: https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_addr.h
@@ -358,7 +366,7 @@ impl State {
 /// few virtual interfaces (AWDL, low-latency Wi-Fi, IPsec) whose churn would
 /// otherwise generate spurious change events.
 pub(crate) fn is_interesting_interface(name: &str) -> bool {
-    #[cfg(bsd)]
+    #[cfg(any(bsd, target_os = "ios"))]
     {
         let base_name = name.trim_end_matches("0123456789");
         if base_name == "llw" || base_name == "awdl" || base_name == "ipsec" {
@@ -467,16 +475,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_default_route() {
-        let default_route = DefaultRouteDetails::new()
-            .await
-            .expect("missing default route");
-        println!("default_route: {default_route:#?}");
+        let default_route = DefaultRouteDetails::new().await;
+        // The default path can be unsatisfied on iOS.
+        #[cfg(not(target_os = "ios"))]
+        assert!(default_route.is_some(), "missing default route");
+        if let Some(route) = default_route {
+            assert!(!route.interface_name.is_empty());
+            println!("default_route: {route:#?}");
+        }
     }
 
     #[tokio::test]
     async fn test_likely_home_router() {
-        let home_router = HomeRouter::new().expect("missing home router");
-        println!("home router: {home_router:#?}");
+        let home_router = HomeRouter::new();
+        // Network.framework can report no gateways even for a satisfied path.
+        #[cfg(not(target_os = "ios"))]
+        assert!(home_router.is_some(), "missing home router");
+        if let Some(router) = home_router {
+            assert!(!router.gateway.is_unspecified());
+            println!("home router: {router:#?}");
+        }
     }
 
     #[test]
