@@ -15,6 +15,11 @@ from `getifaddrs` even without a satisfied path. Per-address IPv6 state flags
 aren't available through that API. On older systems `Monitor::new()` returns
 an error; address enumeration still works.
 
+If no initial path arrives within one second, the first snapshot still reports
+addresses; a running monitor picks up later callbacks. Those callbacks trigger
+address rescans, but they are path notifications, not per-address events. A
+same-interface address change is not guaranteed to produce a notification.
+
 `HomeRouter::new()` uses gateways reported by the path (iOS 13 and later).
 This synchronous query waits at most one second for an initial path and returns
 `None` if no gateway is reported, as can happen on cellular or a simulator.

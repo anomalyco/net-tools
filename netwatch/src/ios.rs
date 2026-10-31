@@ -2,8 +2,12 @@
 //! confines SDK object and block lifetimes to the native side of the boundary.
 use std::{ffi::c_void, net::SocketAddr, ptr::NonNull, sync::mpsc, time::Duration};
 
+use n0_future::time::timeout;
 use socket2::{SockAddr, SockAddrStorage};
 use tokio::sync::watch;
+
+// An unavailable initial path must not hold up interface enumeration.
+const INITIAL_PATH_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Path {
@@ -85,10 +89,10 @@ impl Drop for PathMonitor {
 
 impl Path {
     pub(crate) async fn latest(rx: &mut watch::Receiver<Option<Self>>) -> Option<Self> {
-        rx.wait_for(Option::is_some)
+        *timeout(INITIAL_PATH_TIMEOUT, rx.wait_for(Option::is_some))
             .await
-            .ok()
-            .and_then(|path| *path)
+            .ok()?
+            .ok()?
     }
 
     pub(crate) async fn current() -> Option<Self> {
@@ -103,7 +107,7 @@ impl Path {
         let _monitor = PathMonitor::start(move |p| {
             let _ = tx.try_send(p);
         })?;
-        rx.recv_timeout(Duration::from_secs(1)).ok()
+        rx.recv_timeout(INITIAL_PATH_TIMEOUT).ok()
     }
 }
 
@@ -152,6 +156,23 @@ mod tests {
     use std::{net::Ipv4Addr, ptr};
 
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn initial_path_timeout_still_accepts_late_updates() {
+        let (tx, mut rx) = watch::channel(None);
+        let start = tokio::time::Instant::now();
+        let path = timeout(INITIAL_PATH_TIMEOUT * 2, Path::latest(&mut rx))
+            .await
+            .expect("initial path wait must finish even with a live, silent sender");
+        assert!(path.is_none());
+        assert_eq!(start.elapsed(), INITIAL_PATH_TIMEOUT);
+
+        tx.send_replace(Some(Path {
+            interface_index: 7,
+            ..Path::default()
+        }));
+        assert_eq!(Path::latest(&mut rx).await.unwrap().interface_index, 7);
+    }
 
     #[test]
     fn immediate_cancel_releases_callbacks() {
